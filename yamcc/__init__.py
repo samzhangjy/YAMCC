@@ -1,7 +1,17 @@
 import codecs
+import string
+import random
 
 
 class YAMCC(object):
+
+    TAKEOVER_SHORT_CODE = string.ascii_lowercase
+    TAKEOVER_LONG_CODE = string.ascii_uppercase
+    TAKEOVER_SEP = string.digits
+    TAKEOVER_SPACE = "+"
+    TAKEOVER_UNICODE_START = "_"
+    TAKEOVER_UNICODE_END = "$"
+
     def __init__(
         self,
         short_code: str = ".",
@@ -9,7 +19,8 @@ class YAMCC(object):
         sep: str = " ",
         space: str = "/",
         unicode_start: str = "\\",
-        unicode_end: str = "|"
+        unicode_end: str = "|",
+        takeover = False
     ):
         """Yet another morse code converter, but supports unicode.
 
@@ -81,11 +92,43 @@ class YAMCC(object):
         self.unicode_start = unicode_start
         self.unicode_end = unicode_end
         self.space = space
+        self.takeover = takeover
 
     def __get_morse_code(self, char: str) -> str:
+        if self.takeover:
+            if char == " ":
+                return self.TAKEOVER_SPACE
+            plain = self.CHAR_TO_MORSE.get(char, "[ERROR]")
+            result = ""
+            for ch in plain:
+                if ch == ".":
+                    result += random.choice(self.TAKEOVER_SHORT_CODE)
+                elif ch == "-":
+                    result += random.choice(self.TAKEOVER_LONG_CODE)
+                else:
+                    result += ch
+            return result
         if char == " ":
             return self.space
         return self.CHAR_TO_MORSE.get(char, "[ERROR]").replace(".", self.short_code).replace("-", self.long_code)
+    
+    def __split_morse_code(self, morse: str) -> list[str]:
+        if not self.takeover:
+            return morse.split(self.sep)
+        result = []
+        cur_section = ""
+        for ch in morse:
+            if ch in self.TAKEOVER_SEP:
+                result.append(cur_section)
+                cur_section = ""
+            else:
+                cur_section += ch
+        return result
+    
+    def __get_seperator(self) -> str:
+        if self.takeover:
+            return random.choice(self.TAKEOVER_SEP)
+        return self.sep
 
     def text_to_morse(self, text: str, separated_by: str = " ") -> str:
         """Converts a text to morse code.
@@ -102,15 +145,15 @@ class YAMCC(object):
         for char in text:
             cur = char.upper()
             if cur.isascii():
-                converted_morse_code += self.__get_morse_code(cur) + self.sep
+                converted_morse_code += self.__get_morse_code(cur) + self.__get_seperator()
                 continue
-            converted_morse_code += self.unicode_start + self.sep
+            converted_morse_code += (self.TAKEOVER_UNICODE_START if self.takeover else self.unicode_start) + self.__get_seperator()
             cur = char.encode("unicode_escape").decode("utf-8")
             for unicode_char in cur[1:]:
                 converted_morse_code += self.__get_morse_code(
-                    unicode_char.upper()) + self.sep
-            converted_morse_code += self.unicode_end + self.sep
-        return converted_morse_code.strip(self.sep)
+                    unicode_char.upper()) + self.__get_seperator()
+            converted_morse_code += (self.TAKEOVER_UNICODE_END if self.takeover else self.unicode_end) + self.__get_seperator()
+        return converted_morse_code
 
     def morse_to_text(self, morse: str) -> str:
         """Convert generated morse code to unicode string.
@@ -126,13 +169,23 @@ class YAMCC(object):
         is_unicode_mode = False
         normalized_morse = morse.replace(
             self.short_code, ".").replace(self.long_code, "-")
-        for morse_code in normalized_morse.split(self.sep):
+        if self.takeover:
+            normalized_morse = ""
+            for ch in morse:
+                if ch in self.TAKEOVER_SHORT_CODE:
+                    normalized_morse += "."
+                elif ch in self.TAKEOVER_LONG_CODE:
+                    normalized_morse += "-"
+                else:
+                    normalized_morse += ch
+
+        for morse_code in self.__split_morse_code(normalized_morse):
             morse_code = morse_code.strip()
-            if morse_code == self.unicode_start:
+            if morse_code == (self.TAKEOVER_UNICODE_START if self.takeover else self.unicode_start):
                 is_unicode_mode = True
                 current_unicode = "\\"
                 continue
-            if morse_code == self.unicode_end:
+            if morse_code == (self.TAKEOVER_UNICODE_END if self.takeover else self.unicode_end):
                 is_unicode_mode = False
                 converted_text += codecs.decode(
                     current_unicode.lower(), "unicode_escape")
@@ -144,7 +197,7 @@ class YAMCC(object):
             if morse_code in self.MORSE_TO_CHAR:
                 converted_text += self.MORSE_TO_CHAR[morse_code]
                 continue
-            if morse_code == self.space:
+            if morse_code == (self.TAKEOVER_SPACE if self.takeover else self.space):
                 converted_text += " "
                 continue
         return converted_text
@@ -157,7 +210,8 @@ if __name__ == "__main__":
         sep="，",
         space="哝",
         unicode_start="汪",
-        unicode_end="喵"
+        unicode_end="喵",
+        takeover=True
     )
     morse = converter.text_to_morse("Hello World 你好，世界")
     converted = converter.morse_to_text(morse)
